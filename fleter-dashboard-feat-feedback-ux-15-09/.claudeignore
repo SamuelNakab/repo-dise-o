@@ -1,0 +1,27 @@
+node_modules/
+.next/
+.git/
+*.lock
+*.log
+dist/
+build/
+coverage/
+*.pdf
+*.txt              # los propios outputs de Repomix
+context-*.txt      # convención para nombrar los paquetes de Repomix
+*.test.ts
+*.test.tsx
+*.spec.ts
+__tests__/
+/public/           # assets estáticos, imágenes
+*.svg
+*.png
+*.ico
+postcss.config.js
+tailwind.config.ts # Claude no necesita esto para escribir código
+next.config.ts     # idem, salvo que la tarea lo requiera específicamente
+
+# Material académico (defensa oral de un TP), no documentación de producto.
+# Contamina el contexto de producto: describe el proyecto como trabajo práctico
+# y repite afirmaciones que ya no son ciertas del producto.
+docs/academico/

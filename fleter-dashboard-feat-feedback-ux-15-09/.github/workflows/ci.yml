@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+
+# Cancela corridas viejas si se pushea de nuevo al mismo branch/PR.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build + typecheck (obligatorio)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Build (next build incluye chequeo de TypeScript)
+        run: npm run build
+        env:
+          # Placeholders para que el build sea determinista en CI.
+          # Los valores reales viven en Vercel (env vars del proyecto), no acá.
+          NEXT_PUBLIC_API_URL: https://example.invalid
+          NEXT_PUBLIC_WS_URL: wss://example.invalid
+          NEXT_PUBLIC_FIREBASE_API_KEY: ci-placeholder
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ci-placeholder.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ci-placeholder
+          NEXT_PUBLIC_GOOGLE_MAPS_KEY: ci-placeholder
+          NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: ci-placeholder
+          NEXT_PUBLIC_MOCK: "false"
+
+  lint:
+    name: Lint (obligatorio)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+  test:
+    name: Unit tests (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Vitest
+        run: npm test
+
+  test-e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Instalar navegador de Playwright (solo chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright (levanta la app en modo MOCK)
+        run: npm run test:e2e
+        env:
+          NEXT_PUBLIC_MOCK: "true"
+          NEXT_PUBLIC_MOCK_ROLE: "CLIENTE"
+
+      - name: Guardar reporte de Playwright si algo falla
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  deploy:
+    name: Deploy a producción (Vercel)
+    runs-on: ubuntu-latest
+    # Solo se deploya si todo lo anterior pasó, y solo en push a main.
+    needs: [build, lint, test, test-e2e]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Traer configuración de producción del proyecto
+        run: vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+
+      - name: Build de producción
+        run: vercel build --prod --token=$VERCEL_TOKEN
+
+      - name: Deploy (artefacto ya buildeado)
+        run: vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
